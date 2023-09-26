@@ -1,0 +1,5 @@
+- Add a readme.
+- Add docs.
+- Telescope support.
+- Add the ability to remove databases from the index.
+- Add some ability to automatically load databases via environment variables.
