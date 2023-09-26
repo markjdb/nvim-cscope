@@ -150,7 +150,7 @@ function nvimcmd.find(args)
     if #matches == 0 then
         vim.api.nvim_err_writeln("Cscope find: no matches found for '" .. key .. "'")
     else
-        local match = #matches > 1 and input(matches) or 1
+        local match = #matches == 1 and 1 or input(matches)
         if match then
             jump(matches[match])
         end
