@@ -55,9 +55,10 @@ local function input(matches)
     local selection
     vim.ui.input({
         prompt = str,
-        default = "Type number and <Enter> (q or empty cancels): "},
-        function (input) selection = tonumber(input:match("^[^%d]*(%d+)$")) end
-    )
+        default = "Type number and <Enter> (q or empty cancels): "
+    }, function (input)
+        selection = tonumber(input:match("^[^%d]*(%d+)$"))
+    end)
     if not selection or selection < 1 or selection > #matches then
         selection = nil
     end
@@ -90,12 +91,36 @@ local function jump(match)
     vim.cmd("normal! zz")
 end
 
+-- Subcommand table for ":Cscope".  Each function corresponds to a subcommand,
+-- e.g., "Cscope find ...".
 local nvimcmd = {}
+
+-- Add a new database.  Prompts the user for the root path.
+function nvimcmd.add(args)
+    if #args ~= 0 then
+        vim.api.nvim_err_writeln("usage: Cscope add")
+        return
+    end
+
+    local path
+    vim.ui.input({
+        prompt = "Enter the root source path for the new cscope database: ",
+        default = vim.fs.dirname(vim.api.nvim_buf_get_name(0))
+    }, function (input)
+        path = vim.fs.normalize(vim.trim(input))
+    end)
+
+    if path then
+        cscopedb.add(path)
+    else
+        vim.api.nvim_err_writeln("Invalid path")
+    end
+end
 
 -- Close a database.
 function nvimcmd.close(args)
     if #args ~= 1 then
-        vim.api.nvim_err_writeln("usage: Cscope close {dbnum}")
+        vim.api.nvim_err_writeln("usage: Cscope close <dbnum>")
         return
     end
 
@@ -111,7 +136,7 @@ end
 -- Submit a query.
 function nvimcmd.find(args)
     if #args ~= 2 then
-        vim.api.nvim_err_writeln("usage: Cscope find {query type} {search key}")
+        vim.api.nvim_err_writeln("usage: Cscope find <query type> <search key>")
         return
     end
     local qtype = args[1]
@@ -125,24 +150,15 @@ function nvimcmd.find(args)
     if #matches == 0 then
         vim.api.nvim_err_writeln("Cscope find: no matches found for '" .. key .. "'")
     else
-        local match = input(matches)
+        local match = #matches > 1 and input(matches) or 1
         if match then
             jump(matches[match])
         end
     end
 end
 
-function nvimcmd.open(args)
-    if #args > 1 then
-        vim.api.nvim_err_writeln("usage: Cscope open [file]")
-        return
-    end
-
-    local file = args[1]
-    if #args == 0 then
-        file = vim.api.nvim_buf_get_name(0)
-    end
-    local db = cscopedb.open(file)
+local function dbopen(path)
+    local db = cscopedb.open(path)
     if db then
         for _, v in ipairs(g_opendbs) do
             if v.dbpath == db.dbpath then
@@ -151,7 +167,19 @@ function nvimcmd.open(args)
             end
         end
         table.insert(g_opendbs, db)
+    else
+        vim.api.nvim_err_writeln("Cscope open: no database found for '" .. file .. "'")
     end
+end
+
+-- Open the database corresponding to the specified file.
+function nvimcmd.open(args)
+    if #args > 1 then
+        vim.api.nvim_err_writeln("usage: Cscope open [file]")
+        return
+    end
+
+    dbopen(args[1] or vim.api.nvim_buf_get_name(0))
 end
 
 -- Regenerate the database corresponding to database handle "dbnum", or all
@@ -165,22 +193,78 @@ function nvimcmd.regen(args)
     local db = args[1]
     for i, v in ipairs(g_opendbs) do
         if not db or db == i then
-            cscopedb.regen(v.root, v.dbpath)
-            v:reset()
+            local p = cscopedb.asyncregen(v.root, v.dbpath, vim.loop,
+                function (exitcode, signal)
+                    if exitcode == 0 then
+                        v:reset()
+                    else
+                        -- Apparently we can't call into the nvim API here,
+                        -- and I'm not sure what else we can do to alert the
+                        -- user.
+                        print("cscope exited with error " .. exitcode)
+                    end
+                end
+            )
         end
+    end
+end
+
+function nvimcmd.select(args)
+    if #args ~= 0 then
+        vim.api.nvim_err_writeln("usage: Cscope select")
+        return
+    end
+
+    local cwd = vim.fn.getcwd()
+    local undercwd = function (p)
+        return p:sub(#cwd) == cwd
+    end
+
+    local dbs = cscopedb.list()
+    table.sort(dbs, function (i, j)
+        local ip = undercwd(i)
+        local jp = undercwd(j)
+
+        if (ip and jp) or (not ip and not jp) then
+            return i < j
+        elseif ip then
+            return true
+        else
+            return false
+        end
+    end)
+
+    local prompt = imap(dbs,
+        function (i, v)
+            return ("%4d %s"):format(i, v)
+        end)
+    prompt = table.concat(prompt, "\n") .. "\n"
+
+    local selection
+    vim.ui.input({
+        prompt = prompt,
+        default = "Select a root source path to open: ",
+    }, function (input)
+        selection = tonumber(input:match("^[^%d]*(%d+)$"))
+    end)
+
+    if selection and selection >= 1 and selection <= #dbs then
+        dbopen(dbs[selection])
+    else
+        vim.api.nvim_err_writeln("Invalid selection")
     end
 end
 
 -- List open databases.
 function nvimcmd.show(args)
     if #args ~= 0 then
-        vim.api.nvim_err_writeln("usage: Cscope show " .. #args)
+        vim.api.nvim_err_writeln("usage: Cscope show")
         return
     end
     local msg = imap(g_opendbs,
-                     function (i, v)
-                         return ("%3d %s %s"):format(i, v.dbpath, v.root)
-                     end)
+        function (i, v)
+            return ("%3d %s %s"):format(i, v.dbpath, v.root)
+        end)
     print(table.concat(msg, "\n"))
 end
 

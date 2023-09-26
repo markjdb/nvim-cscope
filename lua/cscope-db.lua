@@ -102,6 +102,7 @@ function M.add(root)
     index:close()
 end
 
+-- Regenerate the cscope database for the specified path.
 function M.regen(root, path)
     local cmd = ("cd %s && " ..
                  "find . -type f -name \\*.[chSs] -o -name \\*.cpp -o -name \\*.cc | " ..
@@ -110,6 +111,26 @@ function M.regen(root, path)
     if not res then
         error(("Failed to run cscope: %s"):format(err))
     end
+end
+
+-- Regenerate the cscope database for the specified path, without blocking.
+-- This requires the caller to expose neovim's libuv bindings.
+function M.asyncregen(root, path, uv, cb)
+    local findout = uv.new_pipe()
+    local find = uv.spawn("/usr/bin/find", {
+        args = {
+            ".", "-type", "f", "-name", "*.[chSs]", "-o", "-name", "*.cpp", "-o", "-name", "*.cc",
+        },
+        stdio = { nil, findout, nil },
+        cwd = root,
+    })
+    return uv.spawn("/usr/local/bin/cscope", {
+        args = { "-bqk", "-i-", "-f", path },
+        stdio = { findout, nil, nil },
+        cwd = root,
+    }, function (exitcode, signal)
+        cb(exitcode, signal)
+    end)
 end
 
 -- Return an array of directory paths for which we have cscope databases.
