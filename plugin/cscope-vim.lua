@@ -209,6 +209,17 @@ function nvimcmd.regen(args)
     end
 end
 
+function nvimcmd.reset(args)
+    if #args ~= 0 then
+        vim.api.nvim_err_writeln("usage: Cscope reset")
+        return
+    end
+
+    for _, v in ipairs(g_opendbs) do
+        v:reset()
+    end
+end
+
 function nvimcmd.select(args)
     if #args ~= 0 then
         vim.api.nvim_err_writeln("usage: Cscope select")
