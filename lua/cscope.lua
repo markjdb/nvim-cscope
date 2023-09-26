@@ -83,25 +83,30 @@ end
 
 local CscopeCl = {}
 
-function M.dbopen(dbpath)
+function M.dbopen(dbpath, root)
+    dbpath = posix.stdlib.realpath(dbpath)
     local r, w, child = spawn("cscope", {"-dl", "-f", dbpath})
     local res = {
+        dbpath = dbpath,
+        root = root,
         handle = {
             r = r,
             w = w,
             pid = child,
         }
     }
-    return setmetatable(res, { __index = CscopeCl })
+    return setmetatable(res, { __index = CscopeCl, __gc = CscopeCl.close })
 end
 
--- XXX-MJ need a gc method?
-function CscopeCl:dbclose()
+function CscopeCl:close()
     local handle = self.handle
-    posix.kill(handle.pid, posix.signal.SIGHUP)
-    posix.wait(handle.pid)
-    handle.r:close()
-    handle.w:close()
+    self.handle = nil
+    if handle then
+        posix.kill(handle.pid, posix.signal.SIGHUP)
+        posix.wait(handle.pid)
+        handle.r:close()
+        handle.w:close()
+    end
 end
 
 local queries = {
@@ -126,12 +131,12 @@ function CscopeCl:query(query, key)
     handle.w:write(cmd, key, "\n")
     handle.w:flush()
     local header = handle.r:read("*l")
-    if header == "Unable to search database" then
+    if header:match("Unable to search database") then
         return {}
     end
     local count = header:match(">> cscope: (%d+) lines")
     if count == nil then
-        error(("Invalid header: %s"):format(header))
+        error(("Invalid header '%s'"):format(header))
     end
     count = tonumber(count)
     local results = {}
@@ -145,7 +150,8 @@ function CscopeCl:query(query, key)
             error(("Invalid match: %s"):format(match))
         end
         table.insert(results, {
-            file = file,
+            key = key,
+            file = self.root .. "/" .. file,
             func = func,
             lineno = tonumber(lineno),
             line = line,
@@ -153,6 +159,16 @@ function CscopeCl:query(query, key)
         count = count - 1
     end
     return results
+end
+
+function CscopeCl:reset()
+    self:close()
+    local r, w, child = spawn("cscope", {"-dl", "-f", self.dbpath})
+    self.handle = {
+        r = r,
+        w = w,
+        pid = child,
+    }
 end
 
 return M

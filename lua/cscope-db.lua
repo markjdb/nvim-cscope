@@ -37,7 +37,10 @@ local function path2db(path)
         end
     end)
 
-    return match and dbpath(match.uuid) or nil
+    if not match then
+        return nil
+    end
+    return dbpath(match.uuid), match.root
 end
 
 local function uuidgen()
@@ -67,11 +70,11 @@ function M.init(dbdir)
 end
 
 function M.open(path)
-    local db = path2db(path)
+    local db, root = path2db(path)
     if not db then
         error(("No cscope database found for %s"):format(path))
     end
-    return cscope.dbopen(db)
+    return cscope.dbopen(db, root)
 end
 
 -- Add a new cscope database for the path.
@@ -86,12 +89,7 @@ function M.add(root)
 
     local uuid = uuidgen()
     local path = dbpath(uuid)
-    local cmd = ("find %s -type f -name \\*.[chSs] -o -name \\*.cpp -o -name \\*.cc | cscope -bqk -i- -f %s")
-                :format(root, path)
-    local res, err = os.execute(cmd)
-    if not res then
-        error(("Failed to run cscope: %s"):format(err))
-    end
+    M.regen(root, path)
 
     local index = io.open(g_dbdir .. "/index", "a")
     if not index then
@@ -104,8 +102,18 @@ function M.add(root)
     index:close()
 end
 
+function M.regen(root, path)
+    local cmd = ("cd %s && " ..
+                 "find . -type f -name \\*.[chSs] -o -name \\*.cpp -o -name \\*.cc | " ..
+                 "cscope -bqk -i- -f %s"):format(root, path)
+    local res, err = os.execute(cmd)
+    if not res then
+        error(("Failed to run cscope: %s"):format(err))
+    end
+end
+
 -- Return an array of directory paths for which we have cscope databases.
-function M.dbs()
+function M.list()
     local res = {}
     index_foreach(function (root, _)
         table.insert(res, root)
