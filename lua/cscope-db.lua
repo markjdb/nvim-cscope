@@ -12,8 +12,11 @@ local function dbpath(uuid)
 end
 
 local function index_foreach(func)
-    local index = io.open(g_dbdir .. "/index", "r")
+    local index, _, err = io.open(g_dbdir .. "/index", "r")
     if not index then
+        if err == posix.errno.ENOENT then
+            return
+        end
         error(("Failed to open %s/index for reading"):format(g_dbdir))
     end
     for line in index:lines() do
