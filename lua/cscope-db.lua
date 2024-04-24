@@ -29,6 +29,11 @@ end
 local function path2db(path)
     local match
     index_foreach(function (root, uuid)
+        -- Add a trailing slash to the root if it's not already there,
+        -- to ensure that we're matching a directory.
+        if not root:match("/$") then
+            root = root .. "/"
+        end
         -- Find the longest root that is a prefix of "path".
         if path:find(root, 1, true) == 1 then
             if not match then
