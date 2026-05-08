@@ -266,6 +266,39 @@ function nvimcmd.select(args)
     end
 end
 
+-- Submit a query and populate the quickfix list with results.
+function nvimcmd.quickfix(args)
+    if #args ~= 2 then
+        vim.api.nvim_err_writeln("usage: Cscope quickfix <query type> <search key>")
+        return
+    end
+    local qtype = args[1]
+    local key = args[2]
+
+    local matches = {}
+    for _, db in ipairs(g_opendbs) do
+        tconcat(matches, db:query(qtype, key))
+    end
+
+    if #matches == 0 then
+        vim.api.nvim_err_writeln("Cscope quickfix: no matches found for '" .. key .. "'")
+    else
+        local items = vim.tbl_map(function (match)
+            return {
+                filename = match.file,
+                lnum = match.lineno,
+                col = 1,
+                text = ("[" .. match.func .. "] " .. match.line),
+            }
+        end, matches)
+        vim.fn.setqflist({}, ' ', {
+            title = ("cscope: find %s %s"):format(qtype, key),
+            items = items,
+        })
+        vim.cmd("copen")
+    end
+end
+
 -- List open databases.
 function nvimcmd.show(args)
     if #args ~= 0 then
