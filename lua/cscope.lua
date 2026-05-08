@@ -171,4 +171,18 @@ function CscopeCl:reset()
     }
 end
 
+function M.setup(opts)
+    opts = opts or {}
+    for lhs, rhs in pairs(opts.keymaps or {}) do
+        if type(rhs) == 'string' then
+            local subcmd = rhs
+            vim.keymap.set('n', lhs, function()
+                vim.cmd('Cscope ' .. subcmd .. ' ' .. vim.fn.expand('<cword>'))
+            end)
+        elseif type(rhs) == 'function' then
+            vim.keymap.set('n', lhs, rhs)
+        end
+    end
+end
+
 return M
