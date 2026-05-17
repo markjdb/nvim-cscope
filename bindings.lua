@@ -60,4 +60,10 @@ for _, letter in ipairs({ 'a', 'c', 'd', 'e', 'g', 's' }) do
 end
 find_maps('f', '<cfile>')
 
-map('<C-]>', function() vim.cmd('Cscope find g ' .. vim.fn.expand('<cword>')) end)
+map('<C-]>', function()
+    if #vim.lsp.get_clients({ bufnr = 0 }) > 0 then
+        vim.lsp.buf.definition()
+    else
+        vim.cmd('Cscope find g ' .. vim.fn.expand('<cword>'))
+    end
+end)
