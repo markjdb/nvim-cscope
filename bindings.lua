@@ -60,10 +60,15 @@ for _, letter in ipairs({ 'a', 'c', 'd', 'e', 'g', 's' }) do
 end
 find_maps('f', '<cfile>')
 
-map('<C-]>', function()
-    if #vim.lsp.get_clients({ bufnr = 0 }) > 0 then
-        vim.lsp.buf.definition()
-    else
+local function bind_ctrl_bracket()
+    vim.keymap.set('n', '<C-]>', function()
         vim.cmd('Cscope find g ' .. vim.fn.expand('<cword>'))
-    end
-end)
+    end, { buffer = true })
+end
+
+vim.api.nvim_create_autocmd('FileType', {
+    pattern = { 'c', 'cpp', 'asm' },
+    callback = bind_ctrl_bracket,
+})
+
+vim.api.nvim_create_user_command('CscopeBind', bind_ctrl_bracket, {})
